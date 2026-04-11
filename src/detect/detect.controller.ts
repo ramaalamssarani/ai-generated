@@ -1,0 +1,49 @@
+import { Controller, Post, Body, UsePipes, ValidationPipe, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { DetectService } from './detect.service';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+
+@Controller('detect')
+export class DetectController {
+  constructor(private readonly detectService: DetectService) { }
+
+  @Post('image')
+  @UsePipes(new ValidationPipe({ whitelist: true }))
+  @UseInterceptors(FileInterceptor('image', {
+    storage: diskStorage({
+      destination: './uploads',
+      filename: (req, file, callback) => {
+        const uniqueName = `${Date.now()}${extname(file.originalname)}`;
+        callback(null, uniqueName);
+      },
+    }),
+  }))
+  async image(@UploadedFile() file: Express.Multer.File) {
+    return await this.detectService.checkAI(file.path);
+  }
+
+  @Post('video')
+  @UsePipes(new ValidationPipe({ whitelist: true }))
+  @UseInterceptors(FileInterceptor('video', {
+    storage: diskStorage({
+      destination: './uploads/videos',
+      filename: (req, file, callback) => {
+        const uniqueName = `${Date.now()}${extname(file.originalname)}`;
+        callback(null, uniqueName);
+      },
+    }),
+    limits: {
+      fileSize: 50 * 1024 * 1024, // 50MB
+    },
+    fileFilter: (req, file, callback) => {
+      if (!file.mimetype.startsWith('video/')) {
+        return callback(new Error('Only video files are allowed'), false);
+      }
+      callback(null, true);
+    },
+  }))
+  async video(@UploadedFile() file: Express.Multer.File) {
+    return await this.detectService.checkVideo(file.path);
+  }
+}
