@@ -3,6 +3,7 @@ import { DetectService } from './detect.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
+import { Text } from './dto/text.dto';
 
 @Controller('detect')
 export class DetectController {
@@ -45,5 +46,11 @@ export class DetectController {
   }))
   async video(@UploadedFile() file: Express.Multer.File) {
     return await this.detectService.checkVideo(file.path);
+  }
+
+  @Post('text')
+  @UsePipes(new ValidationPipe({ whitelist: true }))
+  async text(@Body() body: Text) {
+    return this.detectService.text(body);
   }
 }

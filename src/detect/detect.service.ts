@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import axios from 'axios';
 import FormData from 'form-data';
 import * as fs from 'fs';
+import { Text } from './dto/text.dto';
 
 @Injectable()
 export class DetectService {
@@ -58,4 +59,19 @@ export class DetectService {
       return { error: 'Unknown error' };
     }
   }
+
+  async text(body: Text) {
+    const res = await axios.post(
+      'https://api.sightengine.com/1.0/text/check.json',
+      new URLSearchParams({
+        text: body.text,
+        lang: 'en',
+        mode: 'standard',
+        api_user: this.apiUser,
+        api_secret: this.apiSecret,
+      }),
+    );
+    return res.data;
+  }
+
 }
