@@ -1,9 +1,10 @@
-import { Controller, Post, Body, UsePipes, ValidationPipe, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Controller, Post, Body, UsePipes, ValidationPipe, UseInterceptors, UploadedFile, UseGuards, Req } from '@nestjs/common';
 import { DetectService } from './detect.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { Text } from './dto/text.dto';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
 @Controller('detect')
 export class DetectController {
@@ -20,8 +21,9 @@ export class DetectController {
       },
     }),
   }))
-  async image(@UploadedFile() file: Express.Multer.File) {
-    return await this.detectService.checkAI(file.path);
+  @UseGuards(JwtAuthGuard)
+  async image(@UploadedFile() file: Express.Multer.File , @Req() req: any) {
+    return await this.detectService.checkAI(file.path , req.user._id);
   }
 
   @Post('video')
