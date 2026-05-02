@@ -5,13 +5,20 @@ import * as fs from 'fs';
 import { Text } from './dto/text.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { PhotoHistory, PhotoHistoryDocument } from 'src/users/entities/photo-history.schema';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
+import { VideoHistory, VideoHistoryDocument } from 'src/users/entities/video-history.schema';
+import { TextHistory, TextHistoryDocument } from 'src/users/entities/text-history.schema';
 
 @Injectable()
 export class DetectService {
   constructor(
     @InjectModel(PhotoHistory.name)
     private photoHistoryModel: Model<PhotoHistoryDocument>,
+    @InjectModel(VideoHistory.name)
+    private videoHistoryModel: Model<VideoHistoryDocument>,
+    @InjectModel(TextHistory.name)
+    private textHistoryModel: Model<TextHistoryDocument>,
+
   ) { }
   private apiUser = '673764221';
   private apiSecret = 'ckReHshLPQiB5XkjvZuQhynBVKCtxb77';
@@ -66,7 +73,13 @@ export class DetectService {
     }
   }
 
-  async checkVideo(videoPath: string) {
+  async historiesImage(userId: string) {
+    return this.photoHistoryModel
+      .find({ user: userId })
+      .exec();
+  }
+
+  async checkVideo(videoPath: string, userId: string) {
     const form = new FormData();
 
     form.append('media', fs.createReadStream(videoPath));
@@ -75,7 +88,6 @@ export class DetectService {
     form.append('api_secret', this.apiSecret);
 
     try {
-      // Step 1: Submit the video for processing
       const response = await axios.post(
         'https://api.sightengine.com/1.0/video/check.json',
         form,
@@ -84,50 +96,55 @@ export class DetectService {
         }
       );
 
-      console.log('=== Video Submit Response ===');
-      console.log(JSON.stringify(response.data, null, 2));
-
       const data = response.data;
 
-      // If already finished (short video), return immediately
-      if (data.data?.status === 'finished') {
+      const mediaId = data.media?.id;
+      const requestId = data.request?.id;
+
+      if (!mediaId) {
         return data;
       }
 
-      // Step 2: Poll for results until finished
-      const requestId = data.request;
-      if (!requestId) {
-        return data; // No request ID, return what we got
-      }
-
-      const maxAttempts = 60; // Max ~3 minutes
-      const delayMs = 3000; // Poll every 3 seconds
+      const maxAttempts = 60;
+      const delayMs = 3000;
 
       for (let i = 0; i < maxAttempts; i++) {
         await this.delay(delayMs);
 
         const progressRes = await axios.get(
-          'https://api.sightengine.com/1.0/check/progress.json',
+          'https://api.sightengine.com/1.0/video/byid.json',
           {
             params: {
-              request_id: requestId,
+              id: mediaId,
               api_user: this.apiUser,
               api_secret: this.apiSecret,
             },
           }
         );
 
-        console.log(`=== Video Poll #${i + 1} ===`);
-        console.log(JSON.stringify(progressRes.data, null, 2));
-
         const progress = progressRes.data;
 
-        if (progress.data?.status === 'finished') {
-          return progress;
+        const output = progress.output;
+
+        if (output?.data?.status === 'finished') {
+
+          // 💾 SAVE TO DB
+          const saved = await this.videoHistoryModel.create({
+            status: output.data.status,
+            request: requestId,
+            media: {
+              id: data.media.id,
+              uri: data.media.uri,
+            },
+            data: output.data,
+            user: new Types.ObjectId(userId),
+          });
+
+          return data;
         }
 
-        if (progress.data?.status === 'error') {
-          return progress;
+        if (output?.data?.status === 'error') {
+          return output;
         }
       }
 
@@ -146,7 +163,14 @@ export class DetectService {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  async text(body: Text) {
+  async historiesVideo(userId: string) {
+    return this.videoHistoryModel
+      .find({ user: userId })
+      .exec();
+  }
+
+
+  async text(body: Text, userId: string) {
     const res = await axios.post(
       'https://api.sightengine.com/1.0/text/check.json',
       new URLSearchParams({
@@ -157,7 +181,26 @@ export class DetectService {
         api_secret: this.apiSecret,
       }),
     );
-    return res.data;
-  }
 
+    const data = res.data;
+
+    // 💾 SAVE TO DB
+    const saved = await this.textHistoryModel.create({
+      text: body.text,
+      status: data.status,
+      request: data.request?.id,
+      profanity: data.profanity,
+      personal: data.personal,
+      link: data.link,
+      raw: data,
+      user: new Types.ObjectId(userId),
+    });
+
+    return data;
+  }
+  async TextHistory(userId: string) {
+    return this.textHistoryModel
+      .find({ user: userId })
+      .exec();
+  }
 }
