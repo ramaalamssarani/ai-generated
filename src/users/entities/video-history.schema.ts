@@ -5,16 +5,12 @@ export type VideoHistoryDocument = VideoHistory & Document;
 
 @Schema({ timestamps: true })
 export class VideoHistory {
-
-  // 📌 status (from data.status)
   @Prop({ required: true })
   status!: string;
 
-  // 📌 request is now string (not object)
   @Prop({ required: true })
   request!: string;
 
-  // 📌 media info
   @Prop({
     type: {
       id: String,
@@ -27,7 +23,9 @@ export class VideoHistory {
     uri: string;
   };
 
-  // 📌 full analysis data
+  @Prop({ type: Number })
+  ai_score?: number;
+
   @Prop({ type: Object })
   data!: {
     status: string;
@@ -35,10 +33,12 @@ export class VideoHistory {
     last_update: number;
     operations: number;
     progress: number;
-    frames: any[];
+    frames: Array<{
+      info: { id: string; position: number };
+      type: { ai_generated: number };
+    }>;
   };
 
-  // 📌 user relation
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   user!: Types.ObjectId;
 }

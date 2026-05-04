@@ -81,9 +81,8 @@ export class DetectService {
 
   async checkVideo(videoPath: string, userId: string) {
     const form = new FormData();
-
     form.append('media', fs.createReadStream(videoPath));
-    form.append('models', 'genai');
+    form.append('models', 'genai'); // تحديد موديل الـ GenAI
     form.append('api_user', this.apiUser);
     form.append('api_secret', this.apiSecret);
 
@@ -91,19 +90,13 @@ export class DetectService {
       const response = await axios.post(
         'https://api.sightengine.com/1.0/video/check.json',
         form,
-        {
-          headers: form.getHeaders(),
-        }
+        { headers: form.getHeaders() }
       );
 
-      const data = response.data;
+      const initialData = response.data;
+      const mediaId = initialData.media?.id;
 
-      const mediaId = data.media?.id;
-      const requestId = data.request?.id;
-
-      if (!mediaId) {
-        return data;
-      }
+      if (!mediaId) return initialData;
 
       const maxAttempts = 60;
       const delayMs = 3000;
@@ -122,29 +115,33 @@ export class DetectService {
           }
         );
 
-        const progress = progressRes.data;
+        const fullResult = progressRes.data;
+        const status = fullResult.output?.data?.status;
 
-        const output = progress.output;
+        if (status === 'finished') {
+          const outputData = fullResult.output.data;
 
-        if (output?.data?.status === 'finished') {
+          // استخراج النسبة من أول فريم (حسب الـ JSON تبعك)
+          // إذا كان هناك أكثر من فريم، يمكنك أخذ القيمة الأعلى أو المتوسط
+          const aiScore = outputData.frames?.[0]?.type?.ai_generated ?? 0;
 
-          // 💾 SAVE TO DB
-          const saved = await this.videoHistoryModel.create({
-            status: output.data.status,
-            request: requestId,
+          await this.videoHistoryModel.create({
+            status: status,
+            request: fullResult.request?.id,
             media: {
-              id: data.media.id,
-              uri: data.media.uri,
+              id: mediaId,
+              uri: initialData.media.uri,
             },
-            data: output.data,
+            ai_score: aiScore, // تخزين النسبة بشكل مباشر لسهولة القراءة
+            data: outputData,
             user: new Types.ObjectId(userId),
           });
 
-          return data;
+          return outputData;
         }
 
-        if (output?.data?.status === 'error') {
-          return output;
+        if (status === 'failure') {
+          return { error: 'Processing failed', details: fullResult.output.data };
         }
       }
 
@@ -152,8 +149,7 @@ export class DetectService {
 
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {
-        if (error.response) return error.response.data;
-        return { error: error.message };
+        return error.response ? error.response.data : { error: error.message };
       }
       return { error: 'Unknown error' };
     }
