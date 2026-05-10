@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import axios from 'axios';
 import FormData from 'form-data';
 import * as fs from 'fs';
@@ -8,10 +8,12 @@ import { PhotoHistory, PhotoHistoryDocument } from 'src/users/entities/photo-his
 import { Model, Types } from 'mongoose';
 import { VideoHistory, VideoHistoryDocument } from 'src/users/entities/video-history.schema';
 import { TextHistory, TextHistoryDocument } from 'src/users/entities/text-history.schema';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class DetectService {
   constructor(
+    private readonly configService: ConfigService,
     @InjectModel(PhotoHistory.name)
     private photoHistoryModel: Model<PhotoHistoryDocument>,
     @InjectModel(VideoHistory.name)
@@ -20,15 +22,27 @@ export class DetectService {
     private textHistoryModel: Model<TextHistoryDocument>,
 
   ) { }
-  private apiUser = '673764221';
-  private apiSecret = 'ckReHshLPQiB5XkjvZuQhynBVKCtxb77';
+
+  private getSightengineCredentials() {
+    const apiUser = this.configService.get<string>('SIGHTENGINE_API_USER');
+    const apiSecret = this.configService.get<string>('SIGHTENGINE_API_SECRET');
+
+    if (!apiUser || !apiSecret) {
+      throw new InternalServerErrorException(
+        'Sightengine credentials are not configured',
+      );
+    }
+
+    return { apiUser, apiSecret };
+  }
 
   async checkAI(imagePath: string, userId: string) {
+    const { apiUser, apiSecret } = this.getSightengineCredentials();
     const form = new FormData();
     form.append('media', fs.createReadStream(imagePath));
     form.append('models', 'genai');
-    form.append('api_user', this.apiUser);
-    form.append('api_secret', this.apiSecret);
+    form.append('api_user', apiUser);
+    form.append('api_secret', apiSecret);
 
     try {
       const response = await axios.post(
@@ -80,11 +94,12 @@ export class DetectService {
   }
 
   async checkVideo(videoPath: string, userId: string) {
+    const { apiUser, apiSecret } = this.getSightengineCredentials();
     const form = new FormData();
     form.append('media', fs.createReadStream(videoPath));
     form.append('models', 'genai'); // تحديد موديل الـ GenAI
-    form.append('api_user', this.apiUser);
-    form.append('api_secret', this.apiSecret);
+    form.append('api_user', apiUser);
+    form.append('api_secret', apiSecret);
 
     try {
       const response = await axios.post(
@@ -109,8 +124,8 @@ export class DetectService {
           {
             params: {
               id: mediaId,
-              api_user: this.apiUser,
-              api_secret: this.apiSecret,
+              api_user: apiUser,
+              api_secret: apiSecret,
             },
           }
         );
@@ -167,14 +182,15 @@ export class DetectService {
 
 
   async text(body: Text, userId: string) {
+    const { apiUser, apiSecret } = this.getSightengineCredentials();
     const res = await axios.post(
       'https://api.sightengine.com/1.0/text/check.json',
       new URLSearchParams({
         text: body.text,
         lang: 'en',
         mode: 'standard',
-        api_user: this.apiUser,
-        api_secret: this.apiSecret,
+        api_user: apiUser,
+        api_secret: apiSecret,
       }),
     );
 
